@@ -400,8 +400,6 @@ struct PDFToolView: View {
                 }
                 .padding(.vertical)
             }
-            .navigationTitle("PDF Tools")
-            .navigationBarTitleDisplayMode(.inline)
             .fileImporter(
                 isPresented: $viewModel.showingFilePicker,
                 allowedContentTypes: [.pdf],

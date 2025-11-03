@@ -347,11 +347,26 @@ struct ImageToolView: View {
 
                                 if let original = viewModel.selectedImage {
                                     let sizeDiff = original.fileSize - processed.fileSize
-                                    let reduction =
+                                    let percentChange =
                                         Double(sizeDiff) / Double(original.fileSize) * 100
-                                    if reduction > 0 {
-                                        Text("(\(Int(reduction))% smaller)")
-                                            .foregroundColor(.green)
+
+                                    HStack(spacing: 4) {
+                                        if percentChange > 0 {
+                                            Text("(\(Int(percentChange))% smaller)")
+                                                .foregroundColor(.green)
+                                        } else {
+                                            Text("(+\(Int(abs(percentChange)))% larger)")
+                                                .foregroundColor(.red)
+
+                                            Button {
+                                                viewModel.showingSizeIncreaseInfo = true
+                                            } label: {
+                                                Image(systemName: "info.circle.fill")
+                                                    .foregroundColor(.blue)
+                                                    .font(.caption)
+                                            }
+                                            .buttonStyle(.plain)
+                                        }
                                     }
                                 }
                             }
@@ -427,9 +442,14 @@ struct ImageToolView: View {
         .sheet(isPresented: $viewModel.showingQuickLook) {
             if let url = viewModel.processedImage?.url {
                 ImagePreviewSheet(url: url, isPresented: $viewModel.showingQuickLook)
-                    .presentationDetents([.fraction(0.75)])
+                    .presentationDetents([.fraction(0.85), .large])
                     .presentationDragIndicator(.visible)
             }
+        }
+        .alert("File Size Increased", isPresented: $viewModel.showingSizeIncreaseInfo) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(viewModel.getSizeIncreaseExplanation())
         }
         .onChange(of: appState.incomingImageURL) { oldValue, newValue in
             if let url = newValue {

@@ -19,6 +19,7 @@ class ImageProcessorViewModel: ObservableObject {
     @Published var showingFilePicker = false
     @Published var showingShareSheet = false
     @Published var showingQuickLook = false
+    @Published var showingSizeIncreaseInfo = false
 
     // Dimension inputs
     @Published var targetWidthString: String = ""
@@ -119,6 +120,70 @@ class ImageProcessorViewModel: ObservableObject {
         }
 
         return nil
+    }
+
+    // Generate detailed explanation for why file size increased
+    func getSizeIncreaseExplanation() -> String {
+        guard let original = selectedImage, let processed = processedImage else {
+            return "Unable to analyze size increase"
+        }
+
+        let originalExt = original.url.pathExtension.lowercased()
+        let processedExt = processed.url.pathExtension.lowercased()
+
+        var reasons: [String] = []
+
+        // Check compression level
+        let originalPixels = original.width * original.height
+        let processedPixels = processed.width * processed.height
+        let originalBytesPerPixel = Double(original.fileSize) / Double(originalPixels)
+        let processedBytesPerPixel = Double(processed.fileSize) / Double(processedPixels)
+
+        // Reason 1: Original was heavily compressed
+        if originalBytesPerPixel < 0.5 && outputQuality > 0.7 {
+            reasons.append(
+                "• Original was heavily compressed (~\(Int(originalBytesPerPixel * 100 * 3))% quality), but you recompressed at \(Int(outputQuality * 100))% quality"
+            )
+        }
+
+        // Reason 2: High quality setting
+        if outputQuality > 0.85 {
+            reasons.append(
+                "• Output quality set to \(Int(outputQuality * 100))% which preserves more data")
+        }
+
+        // Reason 3: Small dimension reduction
+        if processedPixels > Int(Double(originalPixels) * 0.7) {
+            let dimensionReduction = (1.0 - Double(processedPixels) / Double(originalPixels)) * 100
+            reasons.append(
+                "• Dimensions reduced by only \(Int(dimensionReduction))%, which doesn't offset the quality increase"
+            )
+        }
+
+        // Reason 4: Format conversion
+        if originalExt != processedExt {
+            reasons.append(
+                "• Format converted from \(originalExt.uppercased()) to \(processedExt.uppercased())"
+            )
+        }
+
+        // Reason 5: Same or similar dimensions
+        if processed.width >= original.width || processed.height >= original.height {
+            reasons.append(
+                "• Output dimensions (\(processed.width)×\(processed.height)) are similar to original (\(original.width)×\(original.height))"
+            )
+        }
+
+        if reasons.isEmpty {
+            reasons.append(
+                "• JPEG recompression can increase size when original is heavily optimized")
+        }
+
+        let header = "Why did the file size increase?\n\n"
+        let suggestion =
+            "\n\nTo reduce file size:\n• Lower quality to 70% or less\n• Reduce dimensions more significantly\n• Use a smaller max dimension preset"
+
+        return header + reasons.joined(separator: "\n") + suggestion
     }
 
     // MARK: - File Selection
