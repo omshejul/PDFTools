@@ -137,7 +137,7 @@ class ImageProcessorViewModel: ObservableObject {
         let originalPixels = original.width * original.height
         let processedPixels = processed.width * processed.height
         let originalBytesPerPixel = Double(original.fileSize) / Double(originalPixels)
-        let processedBytesPerPixel = Double(processed.fileSize) / Double(processedPixels)
+        _ = Double(processed.fileSize) / Double(processedPixels)
 
         // Reason 1: Original was heavily compressed
         if originalBytesPerPixel < 0.5 && outputQuality > 0.7 {
