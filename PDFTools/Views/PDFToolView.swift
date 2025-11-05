@@ -160,11 +160,12 @@ struct PDFToolView: View {
                             .padding(.horizontal)
                         }
 
-                        // Compression Toggle
-                        VStack(alignment: .leading, spacing: 12) {
+                        // Compression Settings
+                        VStack(alignment: .leading, spacing: 16) {
+                            // Compression Toggle
                             Toggle(isOn: $viewModel.isCompressionEnabled) {
                                 HStack {
-                                    Image(systemName: viewModel.isCompressionEnabled ? "compress" : "doc.text")
+                                    Image(systemName: "zipper.page")
                                         .foregroundColor(viewModel.isCompressionEnabled ? .green : .secondary)
                                         .font(.title3)
                                     Text("Enable Compression")
@@ -172,98 +173,91 @@ struct PDFToolView: View {
                                 }
                             }
                             .toggleStyle(SwitchToggleStyle(tint: .green))
-                            .padding()
-                            .background(Color(.systemGray6))
-                            .cornerRadius(12)
-                        }
-                        .padding(.horizontal)
 
-                        // Compression Quality Selector (only if compression is enabled)
-                        if viewModel.isCompressionEnabled {
-                            VStack(alignment: .leading, spacing: 12) {
-                                HStack {
-                                    Image(systemName: "slider.horizontal.3")
-                                        .foregroundColor(.blue)
-                                        .font(.title3)
-                                    Text("Compression Quality")
-                                        .font(.headline)
-                                }
+                            // Compression Quality Selector (only if compression is enabled)
+                            if viewModel.isCompressionEnabled {
+                                VStack(alignment: .leading, spacing: 12) {
+                                    HStack {
+                                        Text("Compression Quality")
+                                            .font(.subheadline)
+                                    }
 
-                                // Full-width quality selector menu
-                                Menu {
-                                    ForEach(CompressionQuality.allCases, id: \.self) { quality in
-                                        Button {
-                                            viewModel.compressionQuality = quality
-                                        } label: {
-                                            Label {
-                                                VStack(alignment: .leading) {
-                                                    Text(quality.rawValue)
-                                                    Text(quality.description)
-                                                        .font(.caption)
+                                    // Full-width quality selector menu
+                                    Menu {
+                                        ForEach(CompressionQuality.allCases, id: \.self) { quality in
+                                            Button {
+                                                viewModel.compressionQuality = quality
+                                            } label: {
+                                                Label {
+                                                    VStack(alignment: .leading) {
+                                                        Text(quality.rawValue)
+                                                        Text(quality.description)
+                                                            .font(.caption)
+                                                    }
+                                                } icon: {
+                                                    Image(systemName: qualityIcon(for: quality))
                                                 }
-                                            } icon: {
-                                                Image(systemName: qualityIcon(for: quality))
                                             }
                                         }
-                                    }
-                                } label: {
-                                    HStack(spacing: 12) {
-                                        // Quality icon
-                                        ZStack {
-                                            Circle()
-                                                .fill(
-                                                    qualityColor(for: viewModel.compressionQuality)
-                                                        .opacity(0.15)
+                                    } label: {
+                                        HStack(spacing: 12) {
+                                            // Quality icon
+                                            ZStack {
+                                                Circle()
+                                                    .fill(
+                                                        qualityColor(for: viewModel.compressionQuality)
+                                                            .opacity(0.15)
+                                                    )
+                                                    .frame(width: 44, height: 44)
+
+                                                Image(
+                                                    systemName: qualityIcon(
+                                                        for: viewModel.compressionQuality)
                                                 )
-                                                .frame(width: 44, height: 44)
+                                                .foregroundColor(
+                                                    qualityColor(for: viewModel.compressionQuality)
+                                                )
+                                                .font(.title3)
+                                            }
 
-                                            Image(
-                                                systemName: qualityIcon(
-                                                    for: viewModel.compressionQuality)
-                                            )
-                                            .foregroundColor(
-                                                qualityColor(for: viewModel.compressionQuality)
-                                            )
-                                            .font(.title3)
-                                        }
+                                            VStack(alignment: .leading, spacing: 4) {
+                                                Text(viewModel.compressionQuality.rawValue)
+                                                    .font(.subheadline)
+                                                    .fontWeight(.semibold)
+                                                    .foregroundColor(.primary)
 
-                                        VStack(alignment: .leading, spacing: 4) {
-                                            Text(viewModel.compressionQuality.rawValue)
-                                                .font(.subheadline)
-                                                .fontWeight(.semibold)
-                                                .foregroundColor(.primary)
+                                                Text(viewModel.compressionQuality.description)
+                                                    .font(.caption)
+                                                    .foregroundColor(.secondary)
+                                                    .lineLimit(2)
+                                            }
 
-                                            Text(viewModel.compressionQuality.description)
+                                            Spacer()
+
+                                            Image(systemName: "chevron.up.chevron.down")
                                                 .font(.caption)
                                                 .foregroundColor(.secondary)
-                                                .lineLimit(2)
                                         }
-
-                                        Spacer()
-
-                                        Image(systemName: "chevron.up.chevron.down")
-                                            .font(.caption)
-                                            .foregroundColor(.secondary)
+                                        .padding(12)
+                                        .frame(maxWidth: .infinity)
+                                        .background(Color(.systemBackground))
+                                        .cornerRadius(10)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 10)
+                                                .stroke(
+                                                    qualityColor(for: viewModel.compressionQuality)
+                                                        .opacity(0.3),
+                                                    lineWidth: 1.5
+                                                )
+                                        )
                                     }
-                                    .padding(12)
-                                    .frame(maxWidth: .infinity)
-                                    .background(Color(.systemBackground))
-                                    .cornerRadius(10)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 10)
-                                            .stroke(
-                                                qualityColor(for: viewModel.compressionQuality)
-                                                    .opacity(0.3),
-                                                lineWidth: 1.5
-                                            )
-                                    )
                                 }
                             }
-                            .padding()
-                            .background(Color(.systemGray6))
-                            .cornerRadius(12)
-                            .padding(.horizontal)
                         }
+                        .padding()
+                        .background(Color(.systemGray6))
+                        .cornerRadius(12)
+                        .padding(.horizontal)
 
                         // Estimated output size - COMMENTED OUT FOR NOW
                         // if let estimatedSize = viewModel.estimatedSizeString,
@@ -413,41 +407,40 @@ struct PDFToolView: View {
                             }
                             .font(.subheadline)
                             .foregroundColor(.secondary)
+
+                            // QuickLook Preview and Export Buttons
+                            HStack(spacing: 12) {
+                                // QuickLook preview button
+                                Button {
+                                    viewModel.showingQuickLook = true
+                                } label: {
+                                    Label("Preview", systemImage: "eye.fill")
+                                        .font(.headline)
+                                        .foregroundColor(.white)
+                                        .frame(maxWidth: .infinity)
+                                        .padding()
+                                        .background(Color.purple)
+                                        .cornerRadius(12)
+                                }
+
+                                // Export Button
+                                Button {
+                                    viewModel.showingShareSheet = true
+                                } label: {
+                                    Label("Export", systemImage: "square.and.arrow.up")
+                                        .font(.headline)
+                                        .foregroundColor(.white)
+                                        .frame(maxWidth: .infinity)
+                                        .padding()
+                                        .background(Color.blue)
+                                        .cornerRadius(12)
+                                }
+                            }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding()
                         .background(Color(.systemGray6))
                         .cornerRadius(12)
-                        .padding(.horizontal)
-
-                        // QuickLook Preview and Export Buttons
-                        HStack(spacing: 12) {
-                            // QuickLook preview button
-                            Button {
-                                viewModel.showingQuickLook = true
-                            } label: {
-                                Label("Preview", systemImage: "eye.fill")
-                                    .font(.headline)
-                                    .foregroundColor(.white)
-                                    .frame(maxWidth: .infinity)
-                                    .padding()
-                                    .background(Color.purple)
-                                    .cornerRadius(12)
-                            }
-
-                            // Export Button
-                            Button {
-                                viewModel.showingShareSheet = true
-                            } label: {
-                                Label("Export", systemImage: "square.and.arrow.up")
-                                    .font(.headline)
-                                    .foregroundColor(.white)
-                                    .frame(maxWidth: .infinity)
-                                    .padding()
-                                    .background(Color.blue)
-                                    .cornerRadius(12)
-                            }
-                        }
                         .padding(.horizontal)
 
                         // Reset Button
