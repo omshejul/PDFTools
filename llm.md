@@ -15,13 +15,15 @@ PDFTools is an iOS application built with SwiftUI that allows users to compress 
 
 ### PDF Tool
 
-1. **PDF Compression** - Converts PDF pages to JPEG images with configurable quality
-2. **Quality Selection** - 6 compression levels from Best to Minimum quality
-3. **Password Unlock** - Unlock password-protected PDFs
-4. **Drag and Drop** - Drop PDFs directly from Files app
-5. **File Picker** - Traditional file selection interface
-6. **Share to App** - Open PDFs from other apps via iOS share sheet
-7. **Visual Feedback** - Real-time compression progress and file size comparison
+1. **PDF Page Reordering (NEW)** - Drag-and-drop interface to reorder PDF pages before processing
+2. **Compression Toggle (NEW)** - Enable/disable compression (keeps original quality when off)
+3. **PDF Compression** - Converts PDF pages to JPEG images with configurable quality
+4. **Quality Selection** - 6 compression levels from Best to Minimum quality
+5. **Password Unlock** - Unlock password-protected PDFs
+6. **Drag and Drop** - Drop PDFs directly from Files app
+7. **File Picker** - Traditional file selection interface
+8. **Share to App** - Open PDFs from other apps via iOS share sheet
+9. **Visual Feedback** - Real-time compression progress and file size comparison
 
 ### Image Tool (NEW)
 
@@ -56,16 +58,19 @@ PDFTools/
 ├── ContentView.swift            # Main tab view (PDF & Image tabs)
 ├── Models/
 │   ├── PDFDocument.swift       # PDF metadata model
+│   ├── PDFPageInfo.swift       # PDF page model for reordering (NEW)
 │   ├── ImageInfo.swift         # Image metadata model (NEW)
 │   └── CompressionQuality.swift # Quality level enum
 ├── ViewModels/
 │   ├── PDFProcessorViewModel.swift  # PDF business logic and state management
+│   ├── PageReorderViewModel.swift   # Page reordering logic (NEW)
 │   └── ImageProcessorViewModel.swift # Image business logic and state management (NEW)
 ├── Services/
-│   ├── PDFProcessor.swift      # PDF compression engine
+│   ├── PDFProcessor.swift      # PDF compression & reordering engine
 │   └── ImageProcessor.swift    # Image resizing engine (NEW)
 ├── Views/
 │   ├── PDFToolView.swift       # PDF compression interface
+│   ├── PageReorderView.swift   # Page reordering interface (NEW)
 │   └── ImageToolView.swift     # Image resizing interface (NEW)
 └── Utilities/
     └── FileManager+Extensions.swift # File utility extensions
@@ -373,6 +378,116 @@ This means:
 .strokeBorder(style: StrokeStyle(lineWidth: 2, dash: [8, 4]))
 ```
 
+### 7. PDF Page Reordering (NEW - November 5, 2025)
+
+**Feature:** Drag-and-drop interface to reorder PDF pages before compression or processing.
+
+**Key Implementation:**
+
+```swift
+// PageReorderViewModel.swift
+func loadPages(from pdfInfo: PDFDocumentInfo) async {
+    guard let pdfDocument = PDFDocument(url: pdfInfo.url) else { return }
+    let pageCount = pdfDocument.pageCount
+    
+    // Generate thumbnails (UIImage must be on MainActor in Swift 6)
+    var pageArray: [PDFPageInfo] = []
+    for pageIndex in 0..<pageCount {
+        autoreleasepool {
+            guard let page = pdfDocument.page(at: pageIndex) else { return }
+            let thumbnailSize = CGSize(width: 150, height: 200)
+            let thumbnail = page.thumbnail(of: thumbnailSize, for: .mediaBox)
+            let pageInfo = PDFPageInfo(pageNumber: pageIndex + 1, thumbnail: thumbnail)
+            pageArray.append(pageInfo)
+        }
+    }
+    pages = pageArray
+}
+
+// PDFProcessor.swift
+func reorderPages(at url: URL, pageOrder: [Int]) async throws -> URL {
+    guard let pdfDocument = PDFDocument(url: url) else {
+        throw PDFProcessorError.invalidPDF
+    }
+    
+    let newDocument = PDFDocument()
+    for (newIndex, originalIndex) in pageOrder.enumerated() {
+        autoreleasepool {
+            guard let page = pdfDocument.page(at: originalIndex) else { return }
+            newDocument.insert(page, at: newIndex)
+        }
+    }
+    
+    guard newDocument.write(to: outputURL) else {
+        throw PDFProcessorError.saveFailed
+    }
+    return outputURL
+}
+```
+
+**UI Implementation:**
+- Native iOS List with `.onMove()` modifier for drag-and-drop
+- `.environment(\.editMode, .constant(.active))` keeps list in edit mode
+- Thumbnails shown with page numbers
+- Reset button to restore original order
+- Save button generates reordered PDF
+
+**Workflow:**
+1. User imports PDF
+2. Taps "Reorder Pages" button (purple)
+3. Drags handle (≡) to reorder pages
+4. Taps "Save Order" to generate reordered PDF
+5. Can then optionally compress the reordered PDF
+
+### 8. Compression Toggle (NEW - November 5, 2025)
+
+**Feature:** Toggle switch to enable/disable compression (keeps original PDF quality when disabled).
+
+**Key Implementation:**
+
+```swift
+// PDFProcessorViewModel.swift
+@Published var isCompressionEnabled = true  // ON by default
+
+func processPDF() async {
+    let pdfToProcess = reorderedPDF ?? unlockedPDF ?? selectedPDF
+    guard let pdf = pdfToProcess else { return }
+    
+    let outputURL: URL
+    if isCompressionEnabled {
+        // Apply JPEG compression with selected quality
+        outputURL = try await processor.compressPDFWithFilter(at: pdf.url, quality: compressionQuality)
+    } else {
+        // No compression - just copy the file
+        outputURL = try await processor.copyPDFWithoutCompression(at: pdf.url)
+    }
+}
+
+// PDFProcessor.swift
+func copyPDFWithoutCompression(at url: URL) async throws -> URL {
+    guard let pdfDocument = PDFDocument(url: url) else {
+        throw PDFProcessorError.invalidPDF
+    }
+    
+    // Simply write the PDF as-is without any modifications
+    guard pdfDocument.write(to: outputURL) else {
+        throw PDFProcessorError.saveFailed
+    }
+    return outputURL
+}
+```
+
+**UI Features:**
+- Toggle switch with green tint when enabled
+- Icon changes: "compress" (ON) vs "doc.text" (OFF)
+- Compression quality selector only visible when toggle is ON
+- Button text changes: "Compress PDF" vs "Process PDF"
+- Default state: ON (compression enabled)
+
+**Use Cases:**
+- **Compression ON:** Reduce file size with quality control
+- **Compression OFF:** Keep original quality (useful after page reordering only)
+
 ---
 
 ## Code Organization
@@ -393,6 +508,21 @@ struct PDFDocumentInfo: Identifiable {
 
     var fileSizeFormatted: String {
         ByteCountFormatter.string(fromByteCount: fileSize, countStyle: .file)
+    }
+}
+```
+
+#### `PDFPageInfo.swift` (NEW)
+
+```swift
+struct PDFPageInfo: Identifiable, Sendable {
+    let id = UUID()
+    let pageNumber: Int
+    let thumbnail: UIImage
+    
+    init(pageNumber: Int, thumbnail: UIImage) {
+        self.pageNumber = pageNumber
+        self.thumbnail = thumbnail
     }
 }
 ```
@@ -468,6 +598,7 @@ class PDFProcessorViewModel: ObservableObject {
     @Published var selectedPDF: PDFDocumentInfo?
     @Published var processedPDF: PDFDocumentInfo?
     @Published var compressionQuality: CompressionQuality = .medium
+    @Published var isCompressionEnabled = true  // NEW: Compression toggle
     @Published var isProcessing = false
     @Published var errorMessage: String?
     @Published var showingFilePicker = false
@@ -475,13 +606,38 @@ class PDFProcessorViewModel: ObservableObject {
     @Published var showingPasswordPrompt = false
     @Published var passwordInput = ""
     @Published var unlockedPDF: PDFDocumentInfo?
+    
+    // NEW: Page reordering properties
+    @Published var showingPageReorder = false
+    @Published var reorderedPDF: PDFDocumentInfo?
 
     private let processor = PDFProcessor()
 
     func selectPDF(from url: URL) { /* ... */ }
     func processPDF() async { /* ... */ }
     func unlockPDF(with password: String) async { /* ... */ }
+    func handleReorderedPDF(url: URL) { /* ... */ }  // NEW
     func cleanup() { /* ... */ }
+}
+```
+
+#### `PageReorderViewModel.swift` (NEW)
+
+```swift
+@MainActor
+class PageReorderViewModel: ObservableObject {
+    @Published var pages: [PDFPageInfo] = []
+    @Published var isProcessing = false
+    @Published var isLoadingPages = false
+    @Published var errorMessage: String?
+    
+    private let processor = PDFProcessor()
+    private var pdfURL: URL?
+    
+    func loadPages(from pdfInfo: PDFDocumentInfo) async { /* ... */ }
+    func movePages(from source: IndexSet, to destination: Int) { /* ... */ }
+    func saveReorderedPDF() async -> URL? { /* ... */ }
+    func resetOrder(from pdfInfo: PDFDocumentInfo) async { /* ... */ }
 }
 ```
 
@@ -519,13 +675,19 @@ class ImageProcessorViewModel: ObservableObject {
 
 #### `PDFProcessor.swift`
 
-Core compression logic:
+Core PDF processing logic:
 
-- Renders PDF pages to images at specified DPI
-- Compresses images with JPEG quality settings
-- Assembles new PDF from compressed images
-- Unlocks password-protected PDFs
-- Uses `CGPDFDocument`, `CGContext`, and `CGImageDestination`
+- **Compression**: Renders PDF pages to images at specified DPI, compresses with JPEG quality settings
+- **Page Reordering (NEW)**: Reorders pages using PDFKit's `insert(_:at:)` method
+- **Copy Without Compression (NEW)**: Preserves original PDF quality when compression is disabled
+- **Password Unlocking**: Unlocks password-protected PDFs
+- Uses `PDFDocument`, `CGContext`, `CGImageDestination`, and `PDFKit`
+
+Key Methods:
+- `compressPDFWithFilter(at:quality:)` - Compresses PDF with JPEG
+- `reorderPages(at:pageOrder:)` - Reorders pages (NEW)
+- `copyPDFWithoutCompression(at:)` - Copies without compression (NEW)
+- `removePassword(from:password:)` - Unlocks protected PDFs
 
 #### `ImageProcessor.swift` (NEW)
 
@@ -557,8 +719,10 @@ PDF compression interface:
 - Drop zone or file picker (when no PDF selected)
 - PDF info card (selected file details)
 - Password unlock prompt for protected PDFs
-- Quality selector (full-width menu with icons)
-- Compress button with progress indicator
+- **Reorder Pages button (NEW)** - Opens page reordering interface
+- **Compression toggle (NEW)** - Enable/disable compression
+- Quality selector (full-width menu with icons) - Only visible when compression enabled
+- Process/Compress button with progress indicator (text changes based on toggle state)
 - Processed PDF card with size comparison
 - Export and reset buttons
 - Integrates with `PDFDropDelegate`
@@ -755,6 +919,27 @@ The original image was heavily compressed (low quality ~50%). When you resize it
 - Implemented password unlock functionality
 - Created password prompt UI
 - Added unlocked PDF export option
+
+### PDF Page Reordering Feature (NEW - November 5, 2025)
+
+- Created PDFPageInfo model for page representation
+- Implemented PageReorderViewModel for state management
+- Added thumbnail generation with UIImage (Swift 6 MainActor compatible)
+- Created PageReorderView with native iOS List drag-and-drop
+- Integrated reorderPages method in PDFProcessor using PDFKit
+- Added purple "Reorder Pages" button to PDFToolView
+- Implemented workflow: Import → Reorder → Compress → Export
+- Fixed SwiftLint violations (0 violations in new files)
+
+### Compression Toggle Feature (NEW - November 5, 2025)
+
+- Added isCompressionEnabled toggle to PDFProcessorViewModel (default: ON)
+- Implemented copyPDFWithoutCompression method in PDFProcessor
+- Created toggle UI with green/gray icons
+- Made quality selector conditionally visible (only when compression enabled)
+- Updated process button text: "Compress PDF" vs "Process PDF"
+- Allows users to reorder pages without compression
+- Preserves original PDF quality when compression is disabled
 
 ### Image Resizing Tool (NEW - November 3, 2025)
 
