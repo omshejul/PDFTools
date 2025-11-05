@@ -129,6 +129,94 @@ class PDFProcessor {
         }.value
     }
 
+    /// Compress PDF with explicit JPEG quality and DPI
+    func compressPDFWithFilter(at url: URL, jpegQuality: CGFloat, dpi: CGFloat) async throws -> URL {
+        guard let pdfDocument = PDFDocument(url: url) else {
+            throw PDFProcessorError.invalidPDF
+        }
+
+        return try await Task.detached {
+            let suffix = "_compressed"
+            let outputURL = try self.createTemporaryOutputURL(basedOn: url, suffix: suffix)
+
+            var mediaBox = CGRect.zero
+
+            guard let pdfContext = CGContext(outputURL as CFURL, mediaBox: &mediaBox, nil) else {
+                throw PDFProcessorError.processingFailed
+            }
+
+            let pageCount = pdfDocument.pageCount
+
+            for pageIndex in 0..<pageCount {
+                autoreleasepool {
+                    guard let page = pdfDocument.page(at: pageIndex) else { return }
+
+                    let pageBounds = page.bounds(for: .mediaBox)
+
+                    // Render at specified DPI
+                    let scale: CGFloat = dpi / 72.0
+                    let imageWidth = Int(pageBounds.width * scale)
+                    let imageHeight = Int(pageBounds.height * scale)
+
+                    let colorSpace = CGColorSpaceCreateDeviceRGB()
+                    let bitmapInfo = CGImageAlphaInfo.premultipliedLast.rawValue
+
+                    guard
+                        let bitmapContext = CGContext(
+                            data: nil,
+                            width: imageWidth,
+                            height: imageHeight,
+                            bitsPerComponent: 8,
+                            bytesPerRow: 0,
+                            space: colorSpace,
+                            bitmapInfo: bitmapInfo
+                        )
+                    else { return }
+
+                    // White background
+                    bitmapContext.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
+                    bitmapContext.fill(CGRect(x: 0, y: 0, width: imageWidth, height: imageHeight))
+
+                    // Render PDF page
+                    bitmapContext.scaleBy(x: scale, y: scale)
+                    bitmapContext.drawPDFPage(page.pageRef!)
+
+                    guard let cgImage = bitmapContext.makeImage() else { return }
+
+                    // Compress to JPEG
+                    let jpegData = NSMutableData()
+                    guard
+                        let destination = CGImageDestinationCreateWithData(
+                            jpegData as CFMutableData,
+                            "public.jpeg" as CFString,
+                            1,
+                            nil
+                        )
+                    else { return }
+
+                    let options: [CFString: Any] = [
+                        kCGImageDestinationLossyCompressionQuality: jpegQuality
+                    ]
+
+                    CGImageDestinationAddImage(destination, cgImage, options as CFDictionary)
+                    CGImageDestinationFinalize(destination)
+
+                    guard let imageSource = CGImageSourceCreateWithData(jpegData as CFData, nil),
+                        let finalCGImage = CGImageSourceCreateImageAtIndex(imageSource, 0, nil)
+                    else { return }
+
+                    var pageMediaBox = pageBounds
+                    pdfContext.beginPage(mediaBox: &pageMediaBox)
+                    pdfContext.draw(finalCGImage, in: pageBounds)
+                    pdfContext.endPage()
+                }
+            }
+
+            pdfContext.closePDF()
+            return outputURL
+        }.value
+    }
+
     // MARK: - Scale PDF
 
     /// Scale PDF by a percentage factor

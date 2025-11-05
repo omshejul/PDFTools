@@ -14,6 +14,7 @@ enum CompressionQuality: String, CaseIterable, Sendable {
     case low = "Low Quality"
     case veryLow = "Very Low Quality"
     case minimum = "Minimum Quality"
+    case custom = "Custom"
 
     var compressionValue: CGFloat {
         switch self {
@@ -29,6 +30,8 @@ enum CompressionQuality: String, CaseIterable, Sendable {
             return 0.15  // 15% quality - very high compression
         case .minimum:
             return 0.05  // 5% quality - maximum compression
+        case .custom:
+            return 0.5  // Default; actual value supplied by ViewModel
         }
     }
 
@@ -46,6 +49,8 @@ enum CompressionQuality: String, CaseIterable, Sendable {
             return 72  // Screen resolution
         case .minimum:
             return 50  // Very low resolution
+        case .custom:
+            return 150  // Default DPI for custom quality
         }
     }
 
@@ -63,6 +68,8 @@ enum CompressionQuality: String, CaseIterable, Sendable {
             return "Very small file, basic quality"
         case .minimum:
             return "Smallest possible file"
+        case .custom:
+            return "Choose your own quality (0–100%)"
         }
     }
 
@@ -80,6 +87,8 @@ enum CompressionQuality: String, CaseIterable, Sendable {
             return 0.75  // ~75% reduction
         case .minimum:
             return 0.85  // ~85% reduction
+        case .custom:
+            return 0.50  // Placeholder; ViewModel uses actual slider value
         }
     }
 }

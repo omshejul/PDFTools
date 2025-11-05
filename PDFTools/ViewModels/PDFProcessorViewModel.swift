@@ -21,6 +21,8 @@ class PDFProcessorViewModel: ObservableObject {
     @Published var showingQuickLook = false
     @Published var compressionQuality: CompressionQuality = .medium
     @Published var isCompressionEnabled = true
+    @Published var customQualityValue: CGFloat = 0.5  // 0.0 – 1.0
+    @Published var customDPI: CGFloat = 150          // 50 – 300 typical range
 
     // Password-related properties
     @Published var showingPasswordPrompt = false
@@ -71,8 +73,9 @@ class PDFProcessorViewModel: ObservableObject {
         // Estimate based on JPEG compression formula
         // File size ≈ (width × height × DPI² × bytes_per_pixel × JPEG_quality) + overhead
 
-        let dpi = quality.resolutionDPI
-        let jpegQuality = quality.compressionValue
+        let dpi: CGFloat = (quality == .custom) ? customDPI : quality.resolutionDPI
+        // If custom, use the slider value; otherwise enum’s preset
+        let jpegQuality: CGFloat = (quality == .custom) ? customQualityValue : quality.compressionValue
 
         // Average PDF page size (A4 at 72 DPI ≈ 595 × 842 points)
         let avgWidth: CGFloat = 595.0
@@ -230,10 +233,18 @@ class PDFProcessorViewModel: ObservableObject {
 
             if isCompressionEnabled {
                 // Apply JPEG compression with selected quality
-                outputURL = try await processor.compressPDFWithFilter(
-                    at: pdf.url,
-                    quality: compressionQuality
-                )
+                if compressionQuality == .custom {
+                    outputURL = try await processor.compressPDFWithFilter(
+                        at: pdf.url,
+                        jpegQuality: customQualityValue,
+                        dpi: customDPI
+                    )
+                } else {
+                    outputURL = try await processor.compressPDFWithFilter(
+                        at: pdf.url,
+                        quality: compressionQuality
+                    )
+                }
             } else {
                 // No compression - just copy the file
                 outputURL = try await processor.copyPDFWithoutCompression(at: pdf.url)

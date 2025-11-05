@@ -12,6 +12,8 @@ import UniformTypeIdentifiers
 struct PDFToolView: View {
     @StateObject private var viewModel = PDFProcessorViewModel()
     @EnvironmentObject var appState: AppState
+    @State private var showIncreaseInfo = false
+    @State private var showDPIInfo = false
 
     var body: some View {
         NavigationView {
@@ -251,6 +253,56 @@ struct PDFToolView: View {
                                                 )
                                         )
                                     }
+
+                                    // Custom slider when "Custom" is selected
+                                    if viewModel.compressionQuality == .custom {
+                                        VStack(alignment: .leading, spacing: 8) {
+                                            HStack {
+                                                Text("Quality (higher is less compression)")
+                                                    .font(.caption)
+                                                    .foregroundColor(.secondary)
+                                                Spacer()
+                                                Text("\(Int(viewModel.customQualityValue * 100))%")
+                                                    .font(.caption)
+                                                    .foregroundColor(.primary)
+                                            }
+                                            Slider(
+                                                value: Binding(
+                                                    get: { Double(viewModel.customQualityValue) },
+                                                    set: { viewModel.customQualityValue = CGFloat($0) }
+                                                ),
+                                                in: 0.0...1.0
+                                            )
+                                        }
+                                        .padding(.horizontal, 4)
+
+                                        VStack(alignment: .leading, spacing: 8) {
+                                            HStack(spacing: 8) {
+                                                Text("DPI")
+                                                    .font(.caption)
+                                                    .foregroundColor(.secondary)
+                                                Button {
+                                                    showDPIInfo = true
+                                                } label: {
+                                                    Image(systemName: "info.circle")
+                                                        .font(.caption)
+                                                        .foregroundColor(.secondary)
+                                                }
+                                                Spacer()
+                                                Text("\(Int(viewModel.customDPI))")
+                                                    .font(.caption)
+                                                    .foregroundColor(.primary)
+                                            }
+                                            Slider(
+                                                value: Binding(
+                                                    get: { Double(viewModel.customDPI) },
+                                                    set: { viewModel.customDPI = CGFloat($0) }
+                                                ),
+                                                in: 50...300
+                                            )
+                                        }
+                                        .padding(.horizontal, 4)
+                                    }
                                 }
                             }
                         }
@@ -398,10 +450,23 @@ struct PDFToolView: View {
 
                                     if let original = viewModel.selectedPDF {
                                         let sizeDiff = original.fileSize - processed.fileSize
-                                        let reduction =
-                                            Double(sizeDiff) / Double(original.fileSize) * 100
-                                        Text("(\(Int(reduction))% smaller)")
-                                            .foregroundColor(.green)
+                                        let reduction = Double(sizeDiff) / Double(original.fileSize) * 100
+                                        if reduction >= 0 {
+                                            Text("(\(Int(reduction))% smaller)")
+                                                .foregroundColor(.green)
+                                        } else {
+                                            HStack(spacing: 6) {
+                                                Text("(\(Int(abs(reduction)))% larger)")
+                                                    .foregroundColor(.red)
+                                                Button {
+                                                    showIncreaseInfo = true
+                                                } label: {
+                                                    Image(systemName: "info.circle")
+                                                        .foregroundColor(.red)
+                                                }
+                                                .buttonStyle(.plain)
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -526,6 +591,20 @@ struct PDFToolView: View {
                 Text("This PDF is password protected. Please enter the password to unlock it.")
             }
         }
+        .alert("File Size Increased", isPresented: $showIncreaseInfo) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(
+                "The processed file is larger than the original. This can happen when:\n\n• The original PDF was already well-compressed\n• Text and vector graphics were converted to images\n• Black and white scans were saved as color JPEG\n• Metadata or color profile changes added overhead\n\nTo reduce size, try lowering the quality setting or keep the original file if it's already optimized."
+            )
+        }
+        .alert("About DPI Settings", isPresented: $showDPIInfo) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(
+                "DPI (Dots Per Inch) determines the resolution when converting PDF pages to images. Higher DPI creates sharper images but larger files, while lower DPI reduces file size but may blur fine details.\n\nRecommended settings:\n• 100-150 DPI: General sharing and viewing\n• 200-300 DPI: Print quality with readable text\n• 72-100 DPI: Maximum compression"
+            )
+        }
     }
 
     // MARK: - Helper Functions
@@ -544,6 +623,8 @@ struct PDFToolView: View {
             return .purple
         case .minimum:
             return .pink
+        case .custom:
+            return .teal
         }
     }
 
@@ -561,6 +642,8 @@ struct PDFToolView: View {
             return "arrow.down.to.line.compact"
         case .minimum:
             return "flame.fill"
+        case .custom:
+            return "slider.horizontal.3"
         }
     }
 }
