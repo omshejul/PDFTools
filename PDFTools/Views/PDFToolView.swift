@@ -5,6 +5,7 @@
 //  Created by Om Shejul on 02/11/25.
 //
 
+import QuickLook
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -40,6 +41,10 @@ struct PDFToolView: View {
 
                     // Selected PDF Info
                     if let pdf = viewModel.selectedPDF {
+                        // Use unlocked PDF for display if available
+                        let displayPDF = viewModel.unlockedPDF ?? pdf
+                        let isOriginalLocked = pdf.isPasswordProtected
+
                         VStack(alignment: .leading, spacing: 12) {
                             HStack {
                                 Text("Selected PDF")
@@ -47,11 +52,17 @@ struct PDFToolView: View {
 
                                 Spacer()
 
-                                // Show lock icon if password protected
-                                if pdf.isPasswordProtected {
-                                    Image(systemName: "lock.fill")
-                                        .foregroundColor(.orange)
-                                        .font(.title3)
+                                // Show lock icon if originally password protected
+                                if isOriginalLocked {
+                                    if viewModel.unlockedPDF != nil {
+                                        Image(systemName: "lock.open.fill")
+                                            .foregroundColor(.green)
+                                            .font(.title3)
+                                    } else {
+                                        Image(systemName: "lock.fill")
+                                            .foregroundColor(.orange)
+                                            .font(.title3)
+                                    }
                                 }
 
                                 Button {
@@ -68,34 +79,34 @@ struct PDFToolView: View {
                                 HStack {
                                     Image(systemName: "doc.fill")
                                         .foregroundColor(.blue)
-                                    Text(pdf.name)
+                                    Text(displayPDF.name)
                                         .lineLimit(1)
                                 }
 
                                 HStack {
                                     Image(systemName: "doc.text")
-                                    Text("\(pdf.pageCount) pages")
+                                    Text("\(displayPDF.pageCount) pages")
                                 }
 
                                 HStack {
                                     Image(systemName: "externaldrive")
-                                    Text(pdf.fileSizeFormatted)
+                                    Text(displayPDF.fileSizeFormatted)
                                 }
 
                                 // Show password protection status
-                                if pdf.isPasswordProtected {
+                                if isOriginalLocked {
                                     HStack {
-                                        Image(systemName: "lock.fill")
-                                        Text("Password Protected")
-
                                         if viewModel.unlockedPDF != nil {
                                             Image(systemName: "checkmark.circle.fill")
                                                 .foregroundColor(.green)
-                                            Text("Unlocked")
+                                            Text("Unlocked - Ready to process")
                                                 .foregroundColor(.green)
+                                        } else {
+                                            Image(systemName: "lock.fill")
+                                            Text("Password Protected")
                                         }
                                     }
-                                    .foregroundColor(.orange)
+                                    .foregroundColor(viewModel.unlockedPDF != nil ? .green : .orange)
                                 }
                             }
                             .font(.subheadline)
@@ -123,90 +134,136 @@ struct PDFToolView: View {
                             .padding(.horizontal)
                         }
 
-                        // Compression Quality Selector
-                        VStack(alignment: .leading, spacing: 12) {
-                            HStack {
-                                Image(systemName: "slider.horizontal.3")
-                                    .foregroundColor(.blue)
-                                    .font(.title3)
-                                Text("Compression Quality")
-                                    .font(.headline)
-                            }
+                        // Reorder Pages Button
+                        Button {
+                            viewModel.showingPageReorder = true
+                        } label: {
+                            Label("Reorder Pages", systemImage: "square.grid.3x3.fill")
+                                .font(.headline)
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(Color.purple)
+                                .cornerRadius(12)
+                        }
+                        .padding(.horizontal)
 
-                            // Full-width quality selector menu
-                            Menu {
-                                ForEach(CompressionQuality.allCases, id: \.self) { quality in
-                                    Button {
-                                        viewModel.compressionQuality = quality
-                                    } label: {
-                                        Label {
-                                            VStack(alignment: .leading) {
-                                                Text(quality.rawValue)
-                                                Text(quality.description)
-                                                    .font(.caption)
+                        // Show reordered status
+                        if viewModel.reorderedPDF != nil {
+                            HStack {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundColor(.green)
+                                Text("Pages reordered")
+                                    .font(.subheadline)
+                                    .foregroundColor(.green)
+                            }
+                            .padding(.horizontal)
+                        }
+
+                        // Compression Toggle
+                        VStack(alignment: .leading, spacing: 12) {
+                            Toggle(isOn: $viewModel.isCompressionEnabled) {
+                                HStack {
+                                    Image(systemName: viewModel.isCompressionEnabled ? "compress" : "doc.text")
+                                        .foregroundColor(viewModel.isCompressionEnabled ? .green : .secondary)
+                                        .font(.title3)
+                                    Text("Enable Compression")
+                                        .font(.headline)
+                                }
+                            }
+                            .toggleStyle(SwitchToggleStyle(tint: .green))
+                            .padding()
+                            .background(Color(.systemGray6))
+                            .cornerRadius(12)
+                        }
+                        .padding(.horizontal)
+
+                        // Compression Quality Selector (only if compression is enabled)
+                        if viewModel.isCompressionEnabled {
+                            VStack(alignment: .leading, spacing: 12) {
+                                HStack {
+                                    Image(systemName: "slider.horizontal.3")
+                                        .foregroundColor(.blue)
+                                        .font(.title3)
+                                    Text("Compression Quality")
+                                        .font(.headline)
+                                }
+
+                                // Full-width quality selector menu
+                                Menu {
+                                    ForEach(CompressionQuality.allCases, id: \.self) { quality in
+                                        Button {
+                                            viewModel.compressionQuality = quality
+                                        } label: {
+                                            Label {
+                                                VStack(alignment: .leading) {
+                                                    Text(quality.rawValue)
+                                                    Text(quality.description)
+                                                        .font(.caption)
+                                                }
+                                            } icon: {
+                                                Image(systemName: qualityIcon(for: quality))
                                             }
-                                        } icon: {
-                                            Image(systemName: qualityIcon(for: quality))
                                         }
                                     }
-                                }
-                            } label: {
-                                HStack(spacing: 12) {
-                                    // Quality icon
-                                    ZStack {
-                                        Circle()
-                                            .fill(
-                                                qualityColor(for: viewModel.compressionQuality)
-                                                    .opacity(0.15)
+                                } label: {
+                                    HStack(spacing: 12) {
+                                        // Quality icon
+                                        ZStack {
+                                            Circle()
+                                                .fill(
+                                                    qualityColor(for: viewModel.compressionQuality)
+                                                        .opacity(0.15)
+                                                )
+                                                .frame(width: 44, height: 44)
+
+                                            Image(
+                                                systemName: qualityIcon(
+                                                    for: viewModel.compressionQuality)
                                             )
-                                            .frame(width: 44, height: 44)
+                                            .foregroundColor(
+                                                qualityColor(for: viewModel.compressionQuality)
+                                            )
+                                            .font(.title3)
+                                        }
 
-                                        Image(
-                                            systemName: qualityIcon(
-                                                for: viewModel.compressionQuality)
-                                        )
-                                        .foregroundColor(
-                                            qualityColor(for: viewModel.compressionQuality)
-                                        )
-                                        .font(.title3)
-                                    }
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text(viewModel.compressionQuality.rawValue)
+                                                .font(.subheadline)
+                                                .fontWeight(.semibold)
+                                                .foregroundColor(.primary)
 
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text(viewModel.compressionQuality.rawValue)
-                                            .font(.subheadline)
-                                            .fontWeight(.semibold)
-                                            .foregroundColor(.primary)
+                                            Text(viewModel.compressionQuality.description)
+                                                .font(.caption)
+                                                .foregroundColor(.secondary)
+                                                .lineLimit(2)
+                                        }
 
-                                        Text(viewModel.compressionQuality.description)
+                                        Spacer()
+
+                                        Image(systemName: "chevron.up.chevron.down")
                                             .font(.caption)
                                             .foregroundColor(.secondary)
-                                            .lineLimit(2)
                                     }
-
-                                    Spacer()
-
-                                    Image(systemName: "chevron.up.chevron.down")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
+                                    .padding(12)
+                                    .frame(maxWidth: .infinity)
+                                    .background(Color(.systemBackground))
+                                    .cornerRadius(10)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 10)
+                                            .stroke(
+                                                qualityColor(for: viewModel.compressionQuality)
+                                                    .opacity(0.3),
+                                                lineWidth: 1.5
+                                            )
+                                    )
                                 }
-                                .padding(12)
-                                .frame(maxWidth: .infinity)
-                                .background(Color(.systemBackground))
-                                .cornerRadius(10)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 10)
-                                        .stroke(
-                                            qualityColor(for: viewModel.compressionQuality)
-                                                .opacity(0.3),
-                                            lineWidth: 1.5
-                                        )
-                                )
                             }
+                            .padding()
+                            .background(Color(.systemGray6))
+                            .cornerRadius(12)
+                            .padding(.horizontal)
                         }
-                        .padding()
-                        .background(Color(.systemGray6))
-                        .cornerRadius(12)
-                        .padding(.horizontal)
 
                         // Estimated output size - COMMENTED OUT FOR NOW
                         // if let estimatedSize = viewModel.estimatedSizeString,
@@ -303,8 +360,11 @@ struct PDFToolView: View {
                             if viewModel.isProcessing {
                                 ProgressView()
                                     .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                            } else {
+                            } else if viewModel.isCompressionEnabled {
                                 Label("Compress PDF", systemImage: "arrow.down.circle.fill")
+                                    .font(.headline)
+                            } else {
+                                Label("Process PDF", systemImage: "checkmark.circle.fill")
                                     .font(.headline)
                             }
                         }
@@ -360,17 +420,33 @@ struct PDFToolView: View {
                         .cornerRadius(12)
                         .padding(.horizontal)
 
-                        // Export Button
-                        Button {
-                            viewModel.showingShareSheet = true
-                        } label: {
-                            Label("Export PDF", systemImage: "square.and.arrow.up")
-                                .font(.headline)
-                                .foregroundColor(.white)
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(Color.blue)
-                                .cornerRadius(12)
+                        // QuickLook Preview and Export Buttons
+                        HStack(spacing: 12) {
+                            // QuickLook preview button
+                            Button {
+                                viewModel.showingQuickLook = true
+                            } label: {
+                                Label("Preview", systemImage: "eye.fill")
+                                    .font(.headline)
+                                    .foregroundColor(.white)
+                                    .frame(maxWidth: .infinity)
+                                    .padding()
+                                    .background(Color.purple)
+                                    .cornerRadius(12)
+                            }
+
+                            // Export Button
+                            Button {
+                                viewModel.showingShareSheet = true
+                            } label: {
+                                Label("Export", systemImage: "square.and.arrow.up")
+                                    .font(.headline)
+                                    .foregroundColor(.white)
+                                    .frame(maxWidth: .infinity)
+                                    .padding()
+                                    .background(Color.blue)
+                                    .cornerRadius(12)
+                            }
                         }
                         .padding(.horizontal)
 
@@ -419,7 +495,20 @@ struct PDFToolView: View {
                     ShareSheet(items: [url])
                 }
             }
-            .onChange(of: appState.incomingPDFURL) { oldValue, newValue in
+            .sheet(isPresented: $viewModel.showingQuickLook) {
+                if let url = viewModel.processedPDF?.url {
+                    PDFPreviewSheet(url: url, isPresented: $viewModel.showingQuickLook)
+                }
+            }
+            .sheet(isPresented: $viewModel.showingPageReorder) {
+                // Use unlocked PDF if available, otherwise use selected PDF
+                if let pdf = viewModel.unlockedPDF ?? viewModel.selectedPDF {
+                    PageReorderView(pdfInfo: pdf) { reorderedURL in
+                        viewModel.handleReorderedPDF(url: reorderedURL)
+                    }
+                }
+            }
+            .onChange(of: appState.incomingPDFURL) { _, newValue in
                 if let url = newValue {
                     viewModel.selectPDF(from: url)
                     // Clear the incoming URL after handling
@@ -572,14 +661,12 @@ struct PDFDropDelegate: DropDelegate {
 
         // Try to load as PDF first, then fall back to file URL
         if itemProvider.hasItemConformingToTypeIdentifier(UTType.pdf.identifier) {
-            itemProvider.loadFileRepresentation(forTypeIdentifier: UTType.pdf.identifier) {
-                url, error in
+            itemProvider.loadFileRepresentation(forTypeIdentifier: UTType.pdf.identifier) { url, error in
                 Self.handleDroppedFile(url: url, error: error, viewModel: viewModel)
             }
         } else {
             // Fall back to loading as file URL
-            itemProvider.loadFileRepresentation(forTypeIdentifier: "public.file-url") {
-                url, error in
+            itemProvider.loadFileRepresentation(forTypeIdentifier: "public.file-url") { url, error in
                 Self.handleDroppedFile(url: url, error: error, viewModel: viewModel)
             }
         }
@@ -664,6 +751,62 @@ struct ShareSheet: UIViewControllerRepresentable {
     }
 
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
+// PDF Preview Sheet with QuickLook
+struct PDFPreviewSheet: View {
+    let url: URL
+    @Binding var isPresented: Bool
+
+    var body: some View {
+        NavigationView {
+            PDFQuickLookView(url: url)
+                .navigationTitle("PDF Preview")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button("Done") {
+                            isPresented = false
+                        }
+                    }
+                }
+        }
+    }
+}
+
+// QuickLook view for PDF preview
+struct PDFQuickLookView: UIViewControllerRepresentable {
+    let url: URL
+
+    func makeUIViewController(context: Context) -> QLPreviewController {
+        let controller = QLPreviewController()
+        controller.dataSource = context.coordinator
+        return controller
+    }
+
+    func updateUIViewController(_ uiViewController: QLPreviewController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(url: url)
+    }
+
+    class Coordinator: NSObject, QLPreviewControllerDataSource {
+        let url: URL
+
+        init(url: URL) {
+            self.url = url
+        }
+
+        func numberOfPreviewItems(in controller: QLPreviewController) -> Int {
+            return 1
+        }
+
+        func previewController(_ controller: QLPreviewController, previewItemAt index: Int)
+            -> QLPreviewItem
+        {
+            return url as QLPreviewItem
+        }
+    }
 }
 
 #Preview {

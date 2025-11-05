@@ -18,12 +18,18 @@ class PDFProcessorViewModel: ObservableObject {
     @Published var errorMessage: String?
     @Published var showingFilePicker = false
     @Published var showingShareSheet = false
+    @Published var showingQuickLook = false
     @Published var compressionQuality: CompressionQuality = .medium
+    @Published var isCompressionEnabled = true
 
     // Password-related properties
     @Published var showingPasswordPrompt = false
     @Published var passwordInput = ""
     @Published var unlockedPDF: PDFDocumentInfo?
+
+    // Page reordering properties
+    @Published var showingPageReorder = false
+    @Published var reorderedPDF: PDFDocumentInfo?
 
     private let processor = PDFProcessor()
 
@@ -193,11 +199,23 @@ class PDFProcessorViewModel: ObservableObject {
         isProcessing = false
     }
 
+    // MARK: - Page Reordering
+
+    func handleReorderedPDF(url: URL) {
+        if let reorderedInfo = PDFDocumentInfo(url: url) {
+            reorderedPDF = reorderedInfo
+            // Update selectedPDF to use reordered version for compression
+            selectedPDF = reorderedInfo
+        } else {
+            errorMessage = "Failed to load reordered PDF"
+        }
+    }
+
     // MARK: - Processing
 
     func processPDF() async {
-        // Use unlocked PDF if available, otherwise use selected PDF
-        let pdfToProcess = unlockedPDF ?? selectedPDF
+        // Use reordered PDF if available, otherwise unlocked PDF, otherwise selected PDF
+        let pdfToProcess = reorderedPDF ?? unlockedPDF ?? selectedPDF
 
         guard let pdf = pdfToProcess else {
             errorMessage = "No PDF selected"
@@ -208,11 +226,18 @@ class PDFProcessorViewModel: ObservableObject {
         errorMessage = nil
 
         do {
-            // Always use JPEG compression with selected quality
-            let outputURL = try await processor.compressPDFWithFilter(
-                at: pdf.url,
-                quality: compressionQuality
-            )
+            let outputURL: URL
+
+            if isCompressionEnabled {
+                // Apply JPEG compression with selected quality
+                outputURL = try await processor.compressPDFWithFilter(
+                    at: pdf.url,
+                    quality: compressionQuality
+                )
+            } else {
+                // No compression - just copy the file
+                outputURL = try await processor.copyPDFWithoutCompression(at: pdf.url)
+            }
 
             if let processedInfo = PDFDocumentInfo(url: outputURL) {
                 processedPDF = processedInfo
@@ -244,12 +269,16 @@ class PDFProcessorViewModel: ObservableObject {
         if let url = unlockedPDF?.url {
             try? FileManager.default.removeItem(at: url)
         }
+        if let url = reorderedPDF?.url {
+            try? FileManager.default.removeItem(at: url)
+        }
         if let url = processedPDF?.url {
             try? FileManager.default.removeItem(at: url)
         }
 
         selectedPDF = nil
         unlockedPDF = nil
+        reorderedPDF = nil
         processedPDF = nil
         passwordInput = ""
         showingPasswordPrompt = false
@@ -263,8 +292,12 @@ class PDFProcessorViewModel: ObservableObject {
         if let url = unlockedPDF?.url {
             try? FileManager.default.removeItem(at: url)
         }
+        if let url = reorderedPDF?.url {
+            try? FileManager.default.removeItem(at: url)
+        }
         selectedPDF = nil
         unlockedPDF = nil
+        reorderedPDF = nil
         errorMessage = nil
         passwordInput = ""
         showingPasswordPrompt = false

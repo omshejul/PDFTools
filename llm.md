@@ -17,13 +17,14 @@ PDFTools is an iOS application built with SwiftUI that allows users to compress 
 
 1. **PDF Page Reordering (NEW)** - Drag-and-drop interface to reorder PDF pages before processing
 2. **Compression Toggle (NEW)** - Enable/disable compression (keeps original quality when off)
-3. **PDF Compression** - Converts PDF pages to JPEG images with configurable quality
-4. **Quality Selection** - 6 compression levels from Best to Minimum quality
-5. **Password Unlock** - Unlock password-protected PDFs
-6. **Drag and Drop** - Drop PDFs directly from Files app
-7. **File Picker** - Traditional file selection interface
-8. **Share to App** - Open PDFs from other apps via iOS share sheet
-9. **Visual Feedback** - Real-time compression progress and file size comparison
+3. **QuickLook Preview (NEW)** - Preview processed PDFs before exporting using native iOS preview
+4. **PDF Compression** - Converts PDF pages to JPEG images with configurable quality
+5. **Quality Selection** - 6 compression levels from Best to Minimum quality
+6. **Password Unlock** - Unlock password-protected PDFs with enhanced lock status indicators
+7. **Drag and Drop** - Drop PDFs directly from Files app
+8. **File Picker** - Traditional file selection interface
+9. **Share to App** - Open PDFs from other apps via iOS share sheet
+10. **Visual Feedback** - Real-time compression progress and file size comparison
 
 ### Image Tool (NEW)
 
@@ -488,6 +489,122 @@ func copyPDFWithoutCompression(at url: URL) async throws -> URL {
 - **Compression ON:** Reduce file size with quality control
 - **Compression OFF:** Keep original quality (useful after page reordering only)
 
+### 9. QuickLook Preview for PDFs (NEW - November 5, 2025)
+
+**Feature:** Native iOS preview for processed PDFs before exporting.
+
+**Key Implementation:**
+
+```swift
+// PDFToolView.swift
+import QuickLook
+
+@Published var showingQuickLook = false
+
+// UI - Preview and Export buttons side-by-side
+HStack(spacing: 12) {
+    // QuickLook preview button
+    Button {
+        viewModel.showingQuickLook = true
+    } label: {
+        Label("Preview", systemImage: "eye.fill")
+            .font(.headline)
+            .foregroundColor(.white)
+            .frame(maxWidth: .infinity)
+            .padding()
+            .background(Color.purple)
+            .cornerRadius(12)
+    }
+    
+    // Export Button
+    Button {
+        viewModel.showingShareSheet = true
+    } label: {
+        Label("Export", systemImage: "square.and.arrow.up")
+            .font(.headline)
+            .foregroundColor(.white)
+            .frame(maxWidth: .infinity)
+            .padding()
+            .background(Color.blue)
+            .cornerRadius(12)
+    }
+}
+
+// Sheet presentation
+.sheet(isPresented: $viewModel.showingQuickLook) {
+    if let url = viewModel.processedPDF?.url {
+        PDFPreviewSheet(url: url, isPresented: $viewModel.showingQuickLook)
+    }
+}
+
+// PDFPreviewSheet.swift
+struct PDFPreviewSheet: View {
+    let url: URL
+    @Binding var isPresented: Bool
+    
+    var body: some View {
+        NavigationView {
+            PDFQuickLookView(url: url)
+                .navigationTitle("PDF Preview")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button("Done") {
+                            isPresented = false
+                        }
+                    }
+                }
+        }
+    }
+}
+
+// PDFQuickLookView.swift - UIViewControllerRepresentable wrapper
+struct PDFQuickLookView: UIViewControllerRepresentable {
+    let url: URL
+    
+    func makeUIViewController(context: Context) -> QLPreviewController {
+        let controller = QLPreviewController()
+        controller.dataSource = context.coordinator
+        return controller
+    }
+    
+    func updateUIViewController(_ uiViewController: QLPreviewController, context: Context) {}
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator(url: url)
+    }
+    
+    class Coordinator: NSObject, QLPreviewControllerDataSource {
+        let url: URL
+        
+        init(url: URL) {
+            self.url = url
+        }
+        
+        func numberOfPreviewItems(in controller: QLPreviewController) -> Int {
+            return 1
+        }
+        
+        func previewController(_ controller: QLPreviewController, previewItemAt index: Int) -> QLPreviewItem {
+            return url as QLPreviewItem
+        }
+    }
+}
+```
+
+**UI Features:**
+- Purple "Preview" button next to blue "Export" button
+- Full-screen native iOS preview with swipe gestures
+- Navigation bar with "Done" button to dismiss
+- Uses system QuickLook for consistent UX
+- Supports all standard PDF viewing features (zoom, scroll, page navigation)
+
+**Benefits:**
+- Verify compression quality before exporting
+- Check page order after reordering
+- Native iOS preview experience
+- No custom PDF viewer implementation needed
+
 ---
 
 ## Code Organization
@@ -919,6 +1036,9 @@ The original image was heavily compressed (low quality ~50%). When you resize it
 - Implemented password unlock functionality
 - Created password prompt UI
 - Added unlocked PDF export option
+- Enhanced lock status indicators: lock.fill (locked) vs lock.open.fill (unlocked)
+- Improved visual feedback with color coding (orange for locked, green for unlocked)
+- Status text shows "Unlocked - Ready to process" after successful unlock
 
 ### PDF Page Reordering Feature (NEW - November 5, 2025)
 
@@ -929,17 +1049,32 @@ The original image was heavily compressed (low quality ~50%). When you resize it
 - Integrated reorderPages method in PDFProcessor using PDFKit
 - Added purple "Reorder Pages" button to PDFToolView
 - Implemented workflow: Import → Reorder → Compress → Export
+- Added reorderedPDF tracking in PDFProcessorViewModel
+- Implemented cascading PDF selection (reordered → unlocked → selected)
 - Fixed SwiftLint violations (0 violations in new files)
 
 ### Compression Toggle Feature (NEW - November 5, 2025)
 
 - Added isCompressionEnabled toggle to PDFProcessorViewModel (default: ON)
 - Implemented copyPDFWithoutCompression method in PDFProcessor
-- Created toggle UI with green/gray icons
+- Created toggle UI with green/gray icons ("compress" vs "doc.text")
 - Made quality selector conditionally visible (only when compression enabled)
 - Updated process button text: "Compress PDF" vs "Process PDF"
 - Allows users to reorder pages without compression
 - Preserves original PDF quality when compression is disabled
+- Conditional processing logic in processPDF() method
+
+### QuickLook Preview Feature (NEW - November 5, 2025)
+
+- Added QuickLook import to PDFToolView
+- Created PDFPreviewSheet wrapper view with NavigationView
+- Implemented PDFQuickLookView as UIViewControllerRepresentable
+- Created Coordinator class conforming to QLPreviewControllerDataSource
+- Restructured Export UI to side-by-side Preview and Export buttons
+- Added showingQuickLook published property to PDFProcessorViewModel
+- Purple "Preview" button with eye.fill icon
+- Full-screen native iOS PDF preview experience
+- Integrated with existing sheet presentation flow
 
 ### Image Resizing Tool (NEW - November 3, 2025)
 
@@ -971,13 +1106,39 @@ The original image was heavily compressed (low quality ~50%). When you resize it
 - ✅ Password-protected PDFs show lock icon
 - ✅ Password unlock prompt appears
 
+### PDF Tool - Page Reordering (NEW)
+
+- ✅ "Reorder Pages" button opens reordering interface
+- ✅ Thumbnails load correctly for all pages
+- ✅ Drag-and-drop works smoothly in List view
+- ✅ Page numbers update correctly after reordering
+- ✅ "Reset" button restores original order
+- ✅ "Save Order" generates reordered PDF
+- ✅ Reordered status indicator shows in main view
+- ✅ Cascading PDF selection works (reordered → unlocked → selected)
+
 ### PDF Tool - Compression
 
+- ✅ Compression toggle enables/disables compression
+- ✅ Quality selector only visible when compression enabled
+- ✅ Button text changes: "Compress PDF" vs "Process PDF"
 - ✅ All 6 quality levels compress PDFs
 - ✅ Progress indicator shows during compression
 - ✅ File size reduces appropriately per quality
 - ✅ Error handling for invalid files
 - ✅ Unlocked PDFs can be compressed
+- ✅ Compression OFF preserves original quality
+- ✅ Reordered PDFs can be compressed
+
+### PDF Tool - Preview & Export (NEW)
+
+- ✅ "Preview" button opens QuickLook interface
+- ✅ Full-screen PDF preview works correctly
+- ✅ Zoom, scroll, and page navigation functional
+- ✅ "Done" button dismisses preview
+- ✅ "Export" button opens share sheet
+- ✅ Both buttons work side-by-side
+- ✅ Preview shows processed PDF (compressed/reordered)
 
 ### Image Tool - File Selection (NEW)
 

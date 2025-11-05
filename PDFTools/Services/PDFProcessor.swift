@@ -180,8 +180,7 @@ class PDFProcessor {
     // MARK: - Helper Methods
 
     private nonisolated func createTemporaryOutputURL(basedOn inputURL: URL, suffix: String)
-        throws -> URL
-    {
+        throws -> URL {
         let tempDir = FileManager.default.temporaryDirectory
         let fileName = inputURL.deletingPathExtension().lastPathComponent
         let outputFileName = "\(fileName)\(suffix).pdf"
@@ -202,6 +201,70 @@ class PDFProcessor {
             return nil
         }
         return size
+    }
+
+    // MARK: - Copy Without Compression
+
+    /// Copy PDF without any compression (keeps original quality)
+    func copyPDFWithoutCompression(at url: URL) async throws -> URL {
+        guard let pdfDocument = PDFDocument(url: url) else {
+            throw PDFProcessorError.invalidPDF
+        }
+
+        return try await Task.detached {
+            let suffix = "_processed"
+            let outputURL = try self.createTemporaryOutputURL(basedOn: url, suffix: suffix)
+
+            // Simply write the PDF as-is without any modifications
+            guard pdfDocument.write(to: outputURL) else {
+                throw PDFProcessorError.saveFailed
+            }
+
+            return outputURL
+        }.value
+    }
+
+    // MARK: - Reorder Pages
+
+    /// Reorder PDF pages based on the provided page order array
+    /// - Parameters:
+    ///   - url: The URL of the PDF to reorder
+    ///   - pageOrder: Array of page indices in the desired order (0-based)
+    /// - Returns: URL of the reordered PDF
+    func reorderPages(at url: URL, pageOrder: [Int]) async throws -> URL {
+        guard let pdfDocument = PDFDocument(url: url) else {
+            throw PDFProcessorError.invalidPDF
+        }
+
+        let originalPageCount = pdfDocument.pageCount
+
+        // Validate page order array
+        guard pageOrder.count == originalPageCount else {
+            throw PDFProcessorError.processingFailed
+        }
+
+        return try await Task.detached {
+            let suffix = "_reordered"
+            let outputURL = try self.createTemporaryOutputURL(basedOn: url, suffix: suffix)
+
+            // Create a new PDF document
+            let newDocument = PDFDocument()
+
+            // Add pages in the new order
+            for (newIndex, originalIndex) in pageOrder.enumerated() {
+                autoreleasepool {
+                    guard let page = pdfDocument.page(at: originalIndex) else { return }
+                    newDocument.insert(page, at: newIndex)
+                }
+            }
+
+            // Save the reordered PDF
+            guard newDocument.write(to: outputURL) else {
+                throw PDFProcessorError.saveFailed
+            }
+
+            return outputURL
+        }.value
     }
 
     // MARK: - Remove Password
@@ -250,10 +313,10 @@ class PDFProcessor {
                     // Add page to new PDF
                     pdfContext.beginPage(mediaBox: &pageMediaBox)
                     pdfContext.saveGState()
-                    
+
                     // Draw the PDF page content
                     pdfContext.drawPDFPage(page.pageRef!)
-                    
+
                     pdfContext.restoreGState()
                     pdfContext.endPage()
                 }
