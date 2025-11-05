@@ -8,12 +8,15 @@
 // QuickLook preview for images
 // QuickLook preview wrapper
 import QuickLook
+import PhotosUI
 import SwiftUI
 import UniformTypeIdentifiers
+import UIKit
 
 struct ImageToolView: View {
     @StateObject private var viewModel = ImageProcessorViewModel()
     @EnvironmentObject var appState: AppState
+    @State private var showingPhotoPicker = false
 
     var body: some View {
         ScrollView {
@@ -36,8 +39,11 @@ struct ImageToolView: View {
 
                 // Drop Zone or Select Image Button
                 if viewModel.selectedImage == nil {
-                    ImageDropZoneView(viewModel: viewModel)
-                        .padding(.horizontal)
+                    ImageDropZoneView(
+                        viewModel: viewModel,
+                        showingPhotoPicker: $showingPhotoPicker
+                    )
+                    .padding(.horizontal)
                 }
 
                 // Selected Image Info
@@ -457,12 +463,20 @@ struct ImageToolView: View {
                 appState.incomingImageURL = nil
             }
         }
+        .sheet(isPresented: $showingPhotoPicker) {
+            PhotoPicker { url in
+                viewModel.selectImage(from: url)
+            } onError: { message in
+                viewModel.errorMessage = message
+            }
+        }
     }
 }
 
 // Drop Zone View for images
 struct ImageDropZoneView: View {
     @ObservedObject var viewModel: ImageProcessorViewModel
+    @Binding var showingPhotoPicker: Bool
     @State private var isTargeted = false
 
     var body: some View {
@@ -483,10 +497,20 @@ struct ImageDropZoneView: View {
                     .font(.caption)
                     .foregroundColor(.secondary)
 
-                Button {
-                    viewModel.showingFilePicker = true
+                Menu {
+                    Button {
+                        viewModel.showingFilePicker = true
+                    } label: {
+                        Label("From Files", systemImage: "folder")
+                    }
+
+                    Button {
+                        showingPhotoPicker = true
+                    } label: {
+                        Label("From Photos", systemImage: "photo")
+                    }
                 } label: {
-                    Text("Browse Files")
+                    Label("Choose Photo", systemImage: "photo.on.rectangle")
                         .font(.subheadline)
                         .fontWeight(.semibold)
                         .foregroundColor(.white)
@@ -651,6 +675,81 @@ struct PresetButton: View {
     }
 }
 
+struct ImageSourceSelectionSheet: View {
+    let onFiles: () -> Void
+    let onPhotos: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var usePhotos = true
+
+    var body: some View {
+        VStack(spacing: 20) {
+            Capsule()
+                .fill(Color.secondary.opacity(0.3))
+                .frame(width: 40, height: 5)
+                .padding(.top, 8)
+
+            Text("Choose Image Source")
+                .font(.headline)
+
+            VStack(spacing: 16) {
+                Toggle(isOn: $usePhotos) {
+                    Label {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(usePhotos ? "From Photos" : "From Files")
+                                .font(.body)
+                                .fontWeight(.semibold)
+                            Text(
+                                usePhotos
+                                    ? "Pick from your photo library"
+                                    : "Browse iCloud Drive or local files"
+                            )
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        }
+                    } icon: {
+                        Image(systemName: usePhotos ? "photo" : "folder")
+                            .font(.title3)
+                            .foregroundColor(.purple)
+                    }
+                }
+                .toggleStyle(SwitchToggleStyle(tint: .purple))
+
+                Button {
+                    dismiss()
+                    DispatchQueue.main.async {
+                        if usePhotos {
+                            onPhotos()
+                        } else {
+                            onFiles()
+                        }
+                    }
+                } label: {
+                    HStack {
+                        Spacer()
+                        Text("Continue")
+                            .font(.headline)
+                            .foregroundColor(.white)
+                        Spacer()
+                    }
+                    .padding()
+                    .background(Color.purple)
+                    .cornerRadius(12)
+                }
+
+                Button("Cancel", role: .cancel) {
+                    dismiss()
+                }
+                .foregroundColor(.secondary)
+            }
+
+            Spacer()
+        }
+        .padding(24)
+        .presentationDragIndicator(.visible)
+    }
+}
+
 // Image preview sheet with close button and 75% height
 struct ImagePreviewSheet: View {
     let url: URL
@@ -706,6 +805,77 @@ struct QuickLookView: UIViewControllerRepresentable {
             -> QLPreviewItem
         {
             return url as QLPreviewItem
+        }
+    }
+}
+
+// MARK: - Photo Picker (PHPicker)
+struct PhotoPicker: UIViewControllerRepresentable {
+    let onPickedURL: (URL) -> Void
+    var onError: ((String) -> Void)? = nil
+
+    func makeUIViewController(context: Context) -> PHPickerViewController {
+        var config = PHPickerConfiguration(photoLibrary: .shared())
+        config.filter = .images
+        config.selectionLimit = 1
+        let picker = PHPickerViewController(configuration: config)
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: PHPickerViewController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
+
+    class Coordinator: NSObject, PHPickerViewControllerDelegate {
+        let parent: PhotoPicker
+        init(parent: PhotoPicker) { self.parent = parent }
+
+        func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+            picker.dismiss(animated: true)
+            guard let result = results.first else { return }
+
+            let provider = result.itemProvider
+            if provider.canLoadObject(ofClass: UIImage.self) {
+                provider.loadObject(ofClass: UIImage.self) { object, error in
+                    if let error = error {
+                        DispatchQueue.main.async { self.parent.onError?("Failed to load image: \(error.localizedDescription)") }
+                        return
+                    }
+                    guard let image = object as? UIImage else { return }
+                    let tempDir = FileManager.default.temporaryDirectory
+                    let filename = "photo_\(UUID().uuidString).jpg"
+                    let url = tempDir.appendingPathComponent(filename)
+                    let quality: CGFloat = 0.95
+                    guard let data = image.jpegData(compressionQuality: quality) else {
+                        DispatchQueue.main.async { self.parent.onError?("Could not encode image") }
+                        return
+                    }
+                    do {
+                        try data.write(to: url)
+                        DispatchQueue.main.async { self.parent.onPickedURL(url) }
+                    } catch {
+                        DispatchQueue.main.async { self.parent.onError?("Failed to save image: \(error.localizedDescription)") }
+                    }
+                }
+                return
+            }
+
+            provider.loadDataRepresentation(forTypeIdentifier: UTType.image.identifier) { data, error in
+                if let error = error {
+                    DispatchQueue.main.async { self.parent.onError?("Failed to load image data: \(error.localizedDescription)") }
+                    return
+                }
+                guard let data = data else { return }
+                let tempDir = FileManager.default.temporaryDirectory
+                let url = tempDir.appendingPathComponent("photo_\(UUID().uuidString).img")
+                do {
+                    try data.write(to: url)
+                    DispatchQueue.main.async { self.parent.onPickedURL(url) }
+                } catch {
+                    DispatchQueue.main.async { self.parent.onError?("Failed to save image: \(error.localizedDescription)") }
+                }
+            }
         }
     }
 }
