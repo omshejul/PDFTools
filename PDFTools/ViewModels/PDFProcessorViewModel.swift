@@ -23,6 +23,7 @@ class PDFProcessorViewModel: ObservableObject {
     @Published var isCompressionEnabled = true
     @Published var customQualityValue: CGFloat = 0.5  // 0.0 – 1.0
     @Published var customDPI: CGFloat = 150          // 50 – 300 typical range
+    @Published var compressionMode: PDFCompressionMode = .selective  // New: selective vs rasterize
 
     // Password-related properties
     @Published var showingPasswordPrompt = false
@@ -232,17 +233,19 @@ class PDFProcessorViewModel: ObservableObject {
             let outputURL: URL
 
             if isCompressionEnabled {
-                // Apply JPEG compression with selected quality
+                // Apply JPEG compression with selected quality and mode
                 if compressionQuality == .custom {
-                    outputURL = try await processor.compressPDFWithFilter(
+                    outputURL = try await processor.compressPDF(
                         at: pdf.url,
                         jpegQuality: customQualityValue,
-                        dpi: customDPI
+                        dpi: customDPI,
+                        mode: compressionMode
                     )
                 } else {
-                    outputURL = try await processor.compressPDFWithFilter(
+                    outputURL = try await processor.compressPDF(
                         at: pdf.url,
-                        quality: compressionQuality
+                        quality: compressionQuality,
+                        mode: compressionMode
                     )
                 }
             } else {

@@ -176,6 +176,74 @@ struct PDFToolView: View {
                             }
                             .toggleStyle(SwitchToggleStyle(tint: .green))
 
+                            // Compression Mode Selector (only if compression is enabled)
+                            if viewModel.isCompressionEnabled {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    HStack {
+                                        Text("Compression Mode")
+                                            .font(.subheadline)
+                                        Button {
+                                            // Show info about compression modes
+                                        } label: {
+                                            Image(systemName: "info.circle")
+                                                .font(.caption)
+                                                .foregroundColor(.secondary)
+                                        }
+                                    }
+
+                                    Picker("Compression Mode", selection: $viewModel.compressionMode) {
+                                        HStack {
+                                            Image(systemName: "photo.on.rectangle.angled")
+                                            Text("Selective (Images Only)")
+                                        }
+                                        .tag(PDFCompressionMode.selective)
+
+                                        HStack {
+                                            Image(systemName: "doc.text.image")
+                                            Text("Full Page (Rasterize)")
+                                        }
+                                        .tag(PDFCompressionMode.rasterize)
+                                    }
+                                    .pickerStyle(.segmented)
+
+                                    // Info text based on selected mode
+                                    Group {
+                                        if viewModel.compressionMode == .selective {
+                                            HStack(alignment: .top, spacing: 8) {
+                                                Image(systemName: "checkmark.circle.fill")
+                                                    .foregroundColor(.green)
+                                                    .font(.caption)
+                                                VStack(alignment: .leading, spacing: 4) {
+                                                    Text("Preserves text & vectors")
+                                                        .font(.caption)
+                                                        .foregroundColor(.green)
+                                                    Text("Only compresses embedded images while keeping text crisp and vectors sharp")
+                                                        .font(.caption2)
+                                                        .foregroundColor(.secondary)
+                                                }
+                                            }
+                                        } else {
+                                            HStack(alignment: .top, spacing: 8) {
+                                                Image(systemName: "info.circle.fill")
+                                                    .foregroundColor(.orange)
+                                                    .font(.caption)
+                                                VStack(alignment: .leading, spacing: 4) {
+                                                    Text("Converts all to image")
+                                                        .font(.caption)
+                                                        .foregroundColor(.orange)
+                                                    Text("Rasterizes entire pages, may reduce text quality")
+                                                        .font(.caption2)
+                                                        .foregroundColor(.secondary)
+                                                }
+                                            }
+                                        }
+                                    }
+                                    .padding(8)
+                                    .background(Color(.systemGray6))
+                                    .cornerRadius(8)
+                                }
+                            }
+
                             // Compression Quality Selector (only if compression is enabled)
                             if viewModel.isCompressionEnabled {
                                 VStack(alignment: .leading, spacing: 12) {

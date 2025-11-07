@@ -30,9 +30,74 @@ enum PDFProcessorError: LocalizedError {
     }
 }
 
+/// Compression mode for PDF processing
+enum PDFCompressionMode {
+    case rasterize  // Old method: rasterize entire pages
+    case selective  // New method: extract and downscale images only, preserve vectors
+}
+
 class PDFProcessor {
 
-    // MARK: - Compress PDF
+    private let selectiveCompressor = SelectivePDFCompressor()
+
+    // MARK: - Compress PDF (with mode selection)
+
+    /// Compress PDF using the specified compression mode
+    /// - Parameters:
+    ///   - url: Source PDF URL
+    ///   - quality: Compression quality preset
+    ///   - mode: Compression mode (rasterize or selective)
+    /// - Returns: URL of compressed PDF
+    func compressPDF(at url: URL, quality: CompressionQuality, mode: PDFCompressionMode = .selective) async throws -> URL {
+        switch mode {
+        case .rasterize:
+            return try await compressPDFWithFilter(at: url, quality: quality)
+        case .selective:
+            return try await compressPDFSelectively(at: url, quality: quality)
+        }
+    }
+
+    /// Compress PDF with custom quality and DPI using specified mode
+    func compressPDF(at url: URL, jpegQuality: CGFloat, dpi: CGFloat, mode: PDFCompressionMode = .selective) async throws -> URL {
+        switch mode {
+        case .rasterize:
+            return try await compressPDFWithFilter(at: url, jpegQuality: jpegQuality, dpi: dpi)
+        case .selective:
+            // For selective mode, calculate max image dimension from DPI
+            // DPI of 150 = ~2048px for 8.5" width page
+            let maxDimension = Int((8.5 * dpi))
+            return try await selectiveCompressor.compressPDF(
+                at: url,
+                jpegQuality: jpegQuality,
+                maxImageDimension: maxDimension,
+                dpi: dpi
+            )
+        }
+    }
+
+    // MARK: - Selective Compression (NEW)
+
+    /// Compress PDF by extracting and downscaling embedded images while preserving vector content
+    /// This method provides better quality for PDFs with mixed content (text, vectors, and images)
+    private func compressPDFSelectively(at url: URL, quality: CompressionQuality) async throws -> URL {
+        let jpegQuality = quality.compressionValue
+        let dpi = quality.resolutionDPI
+
+        // Calculate appropriate max dimension based on DPI
+        // Standard letter page is 8.5" × 11"
+        // At 150 DPI: 8.5" = 1275px, 11" = 1650px
+        // At 300 DPI: 8.5" = 2550px, 11" = 3300px
+        let maxDimension = Int((11.0 * dpi)) // Use larger dimension (height)
+
+        return try await selectiveCompressor.compressPDF(
+            at: url,
+            jpegQuality: jpegQuality,
+            maxImageDimension: maxDimension,
+            dpi: dpi
+        )
+    }
+
+    // MARK: - Compress PDF (legacy methods)
 
     /// Compress PDF by rendering pages to JPEG images (actual compression that works on iOS)
     func compressPDFWithFilter(at url: URL, quality: CompressionQuality) async throws -> URL {
